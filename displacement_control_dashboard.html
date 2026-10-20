@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Displacement Control Dashboard</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    .card { border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 8px; }
+    label { display: block; margin: 10px 0 5px; }
+    .pwm-controls input[type=range] { width: 100%; }
+  </style>
+</head>
+<body>
+  <h2>ESP32 Displacement & Control Dashboard</h2>
+
+  <div class="card">
+    <label for="referenceInput">Reference Displacement (cm):</label>
+    <input type="number" id="referenceInput" step="0.1">
+    <button onclick="sendReference()">Set Reference</button>
+    <p id="refStatus">Reference not set</p>
+  </div>
+
+  <div class="card">
+    <p><strong>Actual Voltage:</strong> <span id="voltage">-</span> V</p>
+    <p><strong>Thinpot Displacement:</strong> <span id="displacement">-</span> cm</p>
+    <p><strong>Laser Displacement:</strong> <span id="laser_disp">-</span> cm</p>
+    <p><strong>Limit Switch:</strong> <span id="limit">-</span></p>
+  </div>
+
+  <div class="card pwm-controls">
+    <h3>PWM LED Controls</h3>
+    <label>PWM 1: <input type="range" id="pwm1" min="0" max="4095" onchange="sendPWM(1)"></label>
+    <label>PWM 2: <input type="range" id="pwm2" min="0" max="4095" onchange="sendPWM(2)"></label>
+    <label>PWM 3: <input type="range" id="pwm3" min="0" max="4095" onchange="sendPWM(3)"></label>
+    <label>PWM 4: <input type="range" id="pwm4" min="0" max="4095" onchange="sendPWM(4)"></label>
+  </div>
+
+  <div class="card">
+    <canvas id="dispChart" width="400" height="200"></canvas>
+  </div>
+
+  <script>
+    const client = mqtt.connect('ws://YOUR_MQTT_BROKER_IP:9001'); // Ensure WebSocket enabled broker
+
+    let refDisplacement = null;
+    const refValues = [];
+    const thinpotValues = [];
+    const laserValues = [];
+    const labels = [];
+    let counter = 0;
+
+    client.on('connect', function () {
+      console.log('MQTT connected');
+      client.subscribe('sensor/voltage');
+      client.subscribe('sensor/displacement');
+      client.subscribe('sensor/laser_displacement');
+      client.subscribe('limit/switch');
+    });
+
+    function sendReference() {
+      refDisplacement = parseFloat(document.getElementById('referenceInput').value);
+      document.getElementById('refStatus').textContent = `Reference set: ${refDisplacement} cm`;
+    }
+
+    function sendPWM(channel) {
+      const value = document.getElementById(`pwm${channel}`).value;
+      client.publish(`led/pwm${channel}`, value);
+    }
+
+    client.on('message', function (topic, message) {
+      const payload = message.toString();
+
+      if (topic === 'sensor/voltage') {
+        document.getElementById('voltage').textContent = payload;
+      } 
+      else if (topic === 'sensor/displacement') {
+        document.getElementById('displacement').textContent = payload;
+        if (refDisplacement !== null) {
+          labels.push(counter);
+          refValues.push(refDisplacement);
+          thinpotValues.push(parseFloat(payload));
+          laserValues.push(null); // Placeholder until laser arrives
+          updateChart();
+          counter++;
+        }
+      } 
+      else if (topic === 'sensor/laser_displacement') {
+        document.getElementById('laser_disp').textContent = payload;
+        if (refDisplacement !== null && laserValues.length < counter) {
+          laserValues[counter - 1] = parseFloat(payload);  // Replace placeholder
+        }
+      } 
+      else if (topic === 'limit/switch') {
+        document.getElementById('limit').textContent = payload;
+      }
+    });
+
+    const ctx = document.getElementById('dispChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Reference Displacement',
+            borderColor: 'blue',
+            data: refValues,
+            fill: false
+          },
+          {
+            label: 'Thinpot Displacement',
+            borderColor: 'green',
+            data: thinpotValues,
+            fill: false
+          },
+          {
+            label: 'Laser Displacement',
+            borderColor: 'orange',
+            data: laserValues,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'Displacement (cm)' }
+          },
+          x: {
+            title: { display: true, text: 'Sample Count' }
+          }
+        }
+      }
+    });
+
+    function updateChart() {
+      chart.update();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESP32 LED Control</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 40px; }
+    button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+    #limitStatus { margin-top: 30px; font-size: 20px; color: darkred; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>ESP32 LED PWM Control</h2>
+  <button onclick="turnOn('led/pwm1')">Turn ON LED 1</button>
+  <button onclick="turnOn('led/pwm2')">Turn ON LED 2</button>
+  <button onclick="turnOn('led/pwm3')">Turn ON LED 3</button>
+  <button onclick="turnOn('led/pwm4')">Turn ON LED 4</button>
+
+  <div id="limitStatus">Limit Switch Status: Unknown</div>
+
+  <script>
+    const client = mqtt.connect('ws://YOUR_MQTT_BROKER_IP:9001');
+
+    client.on('connect', () => {
+      console.log('Connected to MQTT broker');
+      client.subscribe('limit/switch');
+    });
+
+    client.on('message', (topic, message) => {
+      console.log(`Received on ${topic}: ${message.toString()}`);
+      if (topic === 'limit/switch') {
+        document.getElementById('limitStatus').innerText = 'Limit Switch Status: ' + message.toString();
+      }
+    });
+
+    client.on('error', function(err) {
+      console.error('MQTT Connection Error: ', err);
+    });
+
+    client.on('close', function() {
+      console.log('MQTT connection closed');
+    });
+
+    function turnOn(topic) {
+      const pwmValue = 2550;
+      client.publish(topic, pwmValue.toString());
+    }
+  </script>
+</body>
+</html>

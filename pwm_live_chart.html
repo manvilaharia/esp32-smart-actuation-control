@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESP32 LED Control + Live Chart</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 40px; }
+    input, button { padding: 10px; margin: 5px; font-size: 16px; }
+    #limitStatus { margin-top: 30px; font-size: 20px; color: darkred; font-weight: bold; }
+    canvas { margin-top: 30px; }
+  </style>
+</head>
+<body>
+
+  <h2>ESP32 LED PWM Control</h2>
+
+  <!-- Input fields for PWM values -->
+  <div>
+    <input type="number" id="pwm1" placeholder="PWM for LED 1 (0-4095)" />
+    <button onclick="sendPWM('led/pwm1', 'pwm1')">Send PWM 1</button><br>
+
+    <input type="number" id="pwm2" placeholder="PWM for LED 2 (0-4095)" />
+    <button onclick="sendPWM('led/pwm2', 'pwm2')">Send PWM 2</button><br>
+
+    <input type="number" id="pwm3" placeholder="PWM for LED 3 (0-4095)" />
+    <button onclick="sendPWM('led/pwm3', 'pwm3')">Send PWM 3</button><br>
+
+    <input type="number" id="pwm4" placeholder="PWM for LED 4 (0-4095)" />
+    <button onclick="sendPWM('led/pwm4', 'pwm4')">Send PWM 4</button>
+  </div>
+
+  <!-- Limit Switch Display -->
+  <div id="limitStatus">Limit Switch Status: Unknown</div>
+
+  <!-- Chart -->
+  <canvas id="pwmChart" width="700" height="350"></canvas>
+
+  <script>
+    // Connect to MQTT broker
+    const client = mqtt.connect('ws://YOUR_MQTT_BROKER_IP:9001'); // Change IP if needed
+
+    client.on('connect', () => {
+      console.log('Connected to MQTT broker');
+
+      // Subscribe to topics
+      client.subscribe('limit/switch');
+      client.subscribe('led/pwm1');
+      client.subscribe('led/pwm2');
+      client.subscribe('led/pwm3');
+      client.subscribe('led/pwm4');
+    });
+
+    client.on('error', err => console.error('MQTT Error:', err));
+    client.on('close', () => console.log('MQTT connection closed'));
+
+    // Set up Chart.js
+    const ctx = document.getElementById('pwmChart').getContext('2d');
+    const labels = []; // x-axis
+    const dataPWM1 = [];
+    const dataPWM2 = [];
+    const dataPWM3 = [];
+    const dataPWM4 = [];
+
+    const pwmChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'PWM 1', data: dataPWM1, borderColor: 'red', fill: false },
+          { label: 'PWM 2', data: dataPWM2, borderColor: 'green', fill: false },
+          { label: 'PWM 3', data: dataPWM3, borderColor: 'blue', fill: false },
+          { label: 'PWM 4', data: dataPWM4, borderColor: 'orange', fill: false },
+        ]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: 'Time' } },
+          y: {
+            beginAtZero: true,
+            max: 4095,
+            title: { display: true, text: 'PWM Value' }
+          }
+        }
+      }
+    });
+
+    // Handle incoming MQTT messages
+    client.on('message', (topic, message) => {
+      const msg = message.toString();
+      console.log(`Received on ${topic}: ${msg}`);
+
+      const timestamp = new Date().toLocaleTimeString();
+
+      if (topic === 'limit/switch') {
+        document.getElementById('limitStatus').innerText = 'Limit Switch Status: ' + msg;
+      } else {
+        let val = parseInt(msg);
+        if (isNaN(val)) return;
+
+        labels.push(timestamp);
+        if (labels.length > 20) labels.shift(); // Keep max 20 entries
+
+        switch (topic) {
+          case 'led/pwm1':
+            dataPWM1.push(val); if (dataPWM1.length > 20) dataPWM1.shift(); break;
+          case 'led/pwm2':
+            dataPWM2.push(val); if (dataPWM2.length > 20) dataPWM2.shift(); break;
+          case 'led/pwm3':
+            dataPWM3.push(val); if (dataPWM3.length > 20) dataPWM3.shift(); break;
+          case 'led/pwm4':
+            dataPWM4.push(val); if (dataPWM4.length > 20) dataPWM4.shift(); break;
+        }
+
+        pwmChart.update();
+      }
+    });
+
+    // Function to send PWM value
+    function sendPWM(topic, inputId) {
+      const val = document.getElementById(inputId).value;
+      if (val !== "") {
+        client.publish(topic, val.toString());
+        document.getElementById(inputId).value = "";
+      }
+    }
+  </script>
+
+</body>
+</html>
